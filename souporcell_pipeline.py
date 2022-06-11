@@ -552,7 +552,7 @@ def consensus(args, ref_mtx, alt_mtx, doublet_file):
 def relatedness():
     print("running relatedness of cluster and known genotypes")
     directory = os.path.dirname(os.path.realpath(__file__))
-    subprocess.check_call(["bash", directory +"/relatedness.sh", args.out_dir], shell=True)
+    subprocess.check_call(["bash", directory +"/relatedness.sh", args.out_dir, args.threads], shell=True)
     subprocess.check_call(['touch', args.out_dir + "/consensus.done"])
 
 #### MAIN RUN SCRIPT

@@ -9,6 +9,7 @@
 set -uo pipefail
 
 inDir=$1
+threads=$2
 clusters_vcf=$inDir/cluster_genotypes.vcf
 clusters_vcf_fixnames=$inDir/cluster_genotypes_fixnames.vcf 
 genotypes_vcf=$inDir/common_variants_covered.vcf
@@ -29,7 +30,7 @@ bcftools reheader -s $samples_file -o $clusters_vcf_fixnames $clusters_vcf
 echo "Merging"
 bgzip $clusters_vcf_fixnames && tabix -f $clusters_vcf_fixnames.gz
 bgzip $genotypes_vcf && tabix -f $genotypes_vcf.gz
-bcftools merge -f PASS --threads 4 -Oz --output $inDir/merged.vcf.gz \
+bcftools merge -f PASS --threads $threads -Oz --output $inDir/merged.vcf.gz \
     -m none \
     $clusters_vcf_fixnames.gz $genotypes_vcf.gz
 
