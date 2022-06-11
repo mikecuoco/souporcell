@@ -549,7 +549,11 @@ def consensus(args, ref_mtx, alt_mtx, doublet_file):
         "--output_dir",args.out_dir,"--soup_out", args.out_dir + "/ambient_rna.txt", "--vcf_out", args.out_dir + "/cluster_genotypes.vcf", "--vcf", final_vcf])
     subprocess.check_call(['touch', args.out_dir + "/consensus.done"])
 
-
+def relatedness():
+    print("running relatedness of cluster and known genotypes")
+    directory = os.path.dirname(os.path.realpath(__file__))
+    subprocess.check_call(["bash", directory +"/relatedness.sh", args.out_dir], shell=True)
+    subprocess.check_call(['touch', args.out_dir + "/consensus.done"])
 
 #### MAIN RUN SCRIPT
 if os.path.isdir(args.out_dir):
@@ -597,6 +601,8 @@ if not(os.path.exists(args.out_dir + "/troublet.done")):
 doublet_file = args.out_dir + "/clusters.tsv"
 if not(os.path.exists(args.out_dir + "/consensus.done")):
     consensus(args, ref_mtx, alt_mtx, doublet_file)
+if not(os.path.exists(args.out_dir + "/relatedness.done")):
+    relatedness()
 print("done")
 
 #### END MAIN RUN SCRIPT        

@@ -4,13 +4,14 @@ import argparse
 import gzip
 import os
 
-
+# Description + arguments
 parser = argparse.ArgumentParser(description = "determine which clusters are the shared clusters between two souporcell runs with shared samples")
 parser.add_argument("-1","--experiment1", required = True, help = "souporcell directory for experiment 1")
 parser.add_argument("-2","--experiment2", required = True, help = "souporcell directory for experiment 2")
 parser.add_argument("-n","--shared", required= True, type = int, help = "how many samples should these experiments share?")
 args = parser.parse_args()
 
+# Open files
 if os.path.isfile(args.experiment1+"/souporcell_merged_sorted_vcf.vcf.gz"):
     vcf1 = gzip.open(args.experiment1+"/souporcell_merged_sorted_vcf.vcf.gz",'rt')
     vcf2 = gzip.open(args.experiment2+"/souporcell_merged_sorted_vcf.vcf.gz",'rt')
@@ -18,7 +19,7 @@ elif os.path.isfile(args.experiment1+"/common_variants_covered.vcf"):
     vcf1 = open(args.experiment1+"/common_variants_covered.vcf")
     vcf2 = open(args.experiment2+"/common_variants_covered.vcf")
     
-
+# Check that the vcfs are sorted and start with the same chromosome
 line1 = "#"
 while line1.startswith("#"):
     line1 = vcf1.readline()
@@ -28,6 +29,8 @@ while line2.startswith("#"):
     line2 = vcf2.readline()
 (chr2, pos2, ref2, alt2) = line2.strip().split()[0:4]
 assert chr1 == chr2, "vcfs dont start with same chromosome, are you sure you used the same reference?"
+
+# initialize values for loop
 last_chr1 = chr1
 last_chr2 = chr2
 locus1 = 1
@@ -39,6 +42,7 @@ locus2_matchset = {}
 save_loci1 = {locus2: (chr1,pos1)}
 save_loci2 = {locus2: (chr2,pos2)}
 breakme = False
+# Loop through vcfs, finding matching loci
 while not breakme:
     if pos1 == None:
         try:
@@ -93,6 +97,7 @@ while not breakme:
 
 print("locus1 matchset "+str(len(locus1_matchset)))
 
+# Loop through singlets from each souporcell run
 cell_clusters1 = {}
 with open(args.experiment1+"/clusters.tsv") as clust:
     clust.readline()
@@ -179,7 +184,6 @@ with open(args.experiment2+"/alt.mtx") as alts:
 
 print("clusters for experiment2 "+str(len(cluster2_locus_counts)))
             
-distances = {}
 loci_to_use = set()
 for locus in range(len(cluster1_locus_counts[0])):
     has_enough = True
@@ -194,6 +198,7 @@ for locus in range(len(cluster1_locus_counts[0])):
     if has_enough:
         loci_to_use.add(locus)
 
+distances = {}
 for cluster1 in cluster1_locus_counts.keys():
     locus_counts1 = cluster1_locus_counts[cluster1]
     for cluster2 in cluster2_locus_counts.keys():
