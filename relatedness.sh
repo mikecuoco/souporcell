@@ -15,6 +15,7 @@ threads=$2
 clusters_vcf=cluster_genotypes.vcf
 clusters_vcf_fixnames=cluster_genotypes_fixnames.vcf 
 genotypes_vcf=common_variants_covered.vcf
+genotypes_vcf_fixnames=common_variants_covered_fixnames.vcf 
 samples_file=cluster_names.txt
 
 echo "Comparing $clusters_vcf to $genotypes_vcf"
@@ -28,13 +29,21 @@ echo "Comparing $clusters_vcf to $genotypes_vcf"
 
     bcftools reheader -s $samples_file -o $clusters_vcf_fixnames $clusters_vcf
 
+    # fix genotype names
+    genotypes=$(bcftools query -l $genotypes_vcf)
+    rm -f $samples_file
+    for g in $genotypes; do
+        echo ${g/_/-} >> $samples_file
+    done
+    bcftools reheader -s $samples_file -o $genotypes_vcf_fixnames $genotypes_vcf
+
     # Merge VCF files
     echo "Merging $clusters_vcf with $genotypes_vcf"
     bgzip -f $clusters_vcf_fixnames && tabix -f $clusters_vcf_fixnames.gz
-    bgzip -f $genotypes_vcf && tabix -f $genotypes_vcf.gz
+    bgzip -f $genotypes_vcf_fixnames && tabix -f $genotypes_vcf_fixnames.gz
     bcftools merge -f PASS --threads $threads -Oz --output $inDir/merged.vcf.gz \
         -m none \
-        $clusters_vcf_fixnames.gz $genotypes_vcf.gz
+        $clusters_vcf_fixnames.gz $genotypes_vcf_fixnames.gz
 
     # compute relatedness
     echo "Computing all pairwise relatedness"
@@ -53,8 +62,7 @@ echo "Comparing $clusters_vcf to $genotypes_vcf"
 
     # cleanup
     echo "Cleaning up"
-    bgzip -d $genotypes_vcf.gz
-    rm -f $samples_file $clusters_vcf_fixnames.gz merged.vcf.gz *tbi
+    rm -f $samples_file $clusters_vcf_fixnames.gz $genotypes_vcf_fixnames.gz merged.vcf.gz *tbi
 } 1> relatedness.out 2> relatedness.err
 
 cd -
