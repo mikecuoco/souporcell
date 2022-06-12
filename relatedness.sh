@@ -47,9 +47,9 @@ echo "Comparing $clusters_vcf to $genotypes_vcf"
         --out relatedness
 
     # save cluster matches
-    grep cluster relatedness.genome | awk '{ OFS = ","; print $1,$3,$12,$15,$16,$17}' > relatedness.csv
+    grep cluster relatedness.genome | awk '{ OFS = ","; print $1,$3,$12}' > relatedness.csv
     # print cluster matches > 90% related
-    grep cluster relatedness.genome | awk '{if ($12 > 0.90 && $12 != "nan") print $1,$3,$12,$15,$16,$17}'
+    grep cluster relatedness.genome | awk '{if ($12 > 0.90 && $12 != "nan") print $1,$3,$12}'
 
     # cleanup
     echo "Cleaning up"
