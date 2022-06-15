@@ -553,7 +553,7 @@ def relatedness():
     print("running relatedness of cluster and known genotypes")
     directory = os.path.dirname(os.path.realpath(__file__))
     subprocess.check_call(["bash", directory +"/relatedness.sh", args.out_dir, args.threads], shell=True)
-    subprocess.check_call(['touch', args.out_dir + "/consensus.done"])
+    subprocess.check_call(['touch', args.out_dir + "/relatedness.done"])
 
 #### MAIN RUN SCRIPT
 if os.path.isdir(args.out_dir):
