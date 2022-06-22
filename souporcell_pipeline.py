@@ -552,8 +552,26 @@ def consensus(args, ref_mtx, alt_mtx, doublet_file):
 def relatedness():
     print("running relatedness of cluster and known genotypes")
     directory = os.path.dirname(os.path.realpath(__file__))
-    subprocess.check_call(["bash", directory +"/relatedness.sh", args.out_dir, args.threads], shell=True)
+    subprocess.check_call(["bash", directory+"/relatedness.sh", args.out_dir, args.threads], shell=True)
     subprocess.check_call(['touch', args.out_dir + "/consensus.done"])
+
+def qc_report():
+    print("running qc reprot")
+    directory = os.path.dirname(os.path.realpath(__file__))
+    sample = os.path.basename(os.path.abspath(args.bam))
+    rmd_file = directory+"/qc_report.Rmd"
+    out_file = args.out_dir+"/qc_report.html"
+    rmd_call = '''
+        rmarkdown::render({0}, output_file = {1}, 
+            params = list(sample = {2}, souporcell_args = list(bam={3}, barcodes={4}, fasta={5}, threads={6}, 
+                          out_dir={7}, clusters={8}, min_alt={9}, min_ref={10}, restarts={11}, 
+                          common_variants={12},known_varaints={13}, known_variants_sample_names={14}, aligner={15}))
+                        )
+    '''.format(rmd_file, out_file, sample,
+        os.path.abspath(args.bam), os.path.abspath(args.barcodes),os.path.abspath(args.fasta), args.threads, os.path.abspath(args.out_dir), args.clusters,
+        args.min_alt, args.min_ref, args.restarts, args.common_variants, args.known_variants, args.known_variants_sample_names, args.aligner)
+    subprocess.check_call(["Rscript -e", rmd_call], shell=True)
+    subprocess.check_call(['touch', args.out_dir + "/qc_report.done"])
 
 #### MAIN RUN SCRIPT
 if os.path.isdir(args.out_dir):
@@ -603,6 +621,8 @@ if not(os.path.exists(args.out_dir + "/consensus.done")):
     consensus(args, ref_mtx, alt_mtx, doublet_file)
 if not(os.path.exists(args.out_dir + "/relatedness.done")):
     relatedness()
+if not(os.path.exists(args.out_dir + "/qc_report.done")):
+    qc_report()
 print("done")
 
 #### END MAIN RUN SCRIPT        
