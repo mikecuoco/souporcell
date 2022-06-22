@@ -1,0 +1,286 @@
+---
+title: "`r paste0('10x Genotype Demultiplexing with [Souporcell](https://github.com/wheaton5/souporcell)')`"
+subtitle: "`r paste0('Sample: ', params$sample)`"
+author: "`r Sys.getenv('USER')`"
+date: "`r Sys.time()`"
+output: 
+    html_document:
+        number_sections: true
+        toc: true
+        toc_float: true
+        code_folding: hide
+params:
+    souporcell_args: ""
+    sample: "sample"
+---
+
+```{r test params, include=FALSE, eval=FALSE}
+params <- list(
+    sample = "LPS1",
+    souporcell_args = list(
+        bam = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/cellranger/LPS1/outs/possorted_genome_bam.bam",
+        barcodes = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/cellbender/LPS1/output_cell_barcodes.csv",
+        fasta = "/home/mcuoco/references/Homo_sapiens/refdata-cellranger-GRCh38-3.0.0/fasta/genome.fa",
+        clusters = 5, threads = 32, min_alt = 5, min_ref = 5, restarts = 15,
+        out_dir = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/souporcell/LPS1",
+        aligner = "HISAT2",
+        common_variants = "/home/mcuoco/projects/jasmin_microglia/data/snps/20220314_igm/impute_1000g/07_lift_hg19_to_hg38/all_igm-imputed-hg38-ensmeblchrs.vcf",
+        known_genotypes = "/home/mcuoco/projects/jasmin_microglia/data/snps/20220314_igm/impute_1000g/07_lift_hg19_to_hg38/all_igm-imputed-hg38-ensmeblchrs.vcf",
+        known_genotypes_sample_names = c("UCI26_UCI26", "UCI33_UCI33", "UCI40_UCI40", "UCI22_UCI22", "3516_3516")
+    )
+)
+setwd(params$souporcell_args$out_dir)
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(PCAtools)
+library(patchwork)
+library(glue)
+
+options(readr.show_col_types = FALSE)
+ggplot2::theme_set(ggplot2::theme_bw())
+
+knitr::opts_knit$set(root.dir = params$souporcell_args$out_dir)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{css set image style}
+p {
+    overflow-x: auto; 
+    white-space: nowrap;
+    }
+p img {
+    max-width: none;
+    } 
+table {
+    overflow: auto; 
+    white-space: nowrap;
+    }
+tbody {
+    overflow: auto;
+}
+```
+
+# Overview
+
+## Souporcell Parameters:
+
+|                         argument | description                                                  | value                                                       |
+| -------------------------------: | :----------------------------------------------------------- | :---------------------------------------------------------- |
+|                          `--bam` | cellranger BAM file                                          | ``r params$souporcell_args$bam``                            |
+|                     `--barcodes` | barcodes file representing non-empty droplets                | ``r params$souporcell_args$barcodes``                       |
+|                        `--fasta` | reference genome fasta file                                  | ``r params$souporcell_args$fasta``                          |
+|                     `--clusters` | number of clusters (aka number of samples pooled)            | `r params$souporcell_args$clusters`                         |
+|                      `--threads` | number of threads                                            | `r params$souporcell_args$threads`                          |
+|                      `--min_alt` | minimum cells with alt allele for variant used in clustering | `r params$souporcell_args$min_alt`                          |
+|                      `--min_ref` | minimum cells with ref allele for variant used in clustering | `r params$souporcell_args$min_ref`                          |
+|                     `--restarts` | number of random seedings                                    | `r params$souporcell_args$restarts`                         |
+|                      `--out_dir` | path to output directory                                     | ``r params$souporcell_args$out_dir``                        |
+|                      `--aligner` | aligner to use (HISAT2 or minimap2)                          | ``r params$souporcell_args$aligner``                        |
+|              `--common_variants` | VCF file of known variant loci, skips variant calling        | ``r params$souporcell_args$common_variants``                |
+|              `--known_genotypes` | VCF file of known sample genotypes, initializes clustering   | ``r params$souporcell_args$known_genotypes``                |
+| `--known_genotypes_sample_names` | names of samples in above VCF file                           | **`r params$souporcell_args$known_genotypes_sample_names`** |
+
+## Clustering Results:
+
+```{r loci, echo=TRUE}
+err = read_lines("clusters.err")
+print(err[1])
+print(err[length(err)])
+```
+
+```{r clustering summary, echo=TRUE}
+# read clusters.tsv
+clusters <- readr::read_tsv("clusters.tsv")
+nclust <- clusters %>%
+    dplyr::select(tidyselect::starts_with("cluster")) %>%
+    ncol()
+
+print(paste0(nrow(clusters), " total cells in ", nclust, " clusters"))
+table(clusters$status)
+table(clusters$assignment, clusters$status)
+```
+
+# PCA of cluster likelihoods
+
+ - **Singlets** are <span style='color: purple;'>colored</span>
+ - **Doublets** are <span style='color: gray;'>gray</span>
+ - **Unassigned** are <span style='color: black;'>black</span>
+
+```{r pca, echo=TRUE, fig.width=10, fig.height=10}
+pca_grid <- function(pca, components = 1:5, alpha = 0.3) {
+    stopifnot(class(pca) == "pca")
+
+    # initialize values for nested loops
+    components <- getComponents(pca, components)
+    plist <- list()
+    k <- 0
+    df <- cbind(pca$rotated, pca$metadata)
+    for (i in seq_along(components)) {
+        for (j in seq_along(components)) {
+            k <- k + 1
+            if (i == j) {
+                label <- paste0(components[i], "\n", round(pca$variance[components[i]], digits = 2), "%")
+                plist[[k]] <- ggplot() +
+                    annotate("text", x = 0.5, y = 0.5, label = label, size = 4, fontface = 2) +
+                    theme_void()
+                next
+            }
+            if (i > j) {
+                plist[[k]] <- ggplot() +
+                    theme_void()
+                next
+            }
+
+            plist[[k]] <- ggplot() +
+                geom_point(
+                    data = filter(df, status == "doublet"),
+                    aes_string(x = components[j], y = components[i]),
+                    color = "gray", alpha = alpha
+                ) +
+                geom_point(
+                    data = filter(df, status == "unassigned"),
+                    aes_string(x = components[j], y = components[i]),
+                    color = "black", alpha = alpha
+                ) +
+                geom_point(
+                    data = filter(df, status == "singlet"),
+                    aes_string(x = components[j], y = components[i], color = "assignment"),
+                    alpha = alpha
+                ) +
+                labs(color = "cluster\nassignment") +
+                theme(panel.grid = element_blank())
+        }
+    }
+
+    patchwork::wrap_plots(plist, ncol = length(components), byrow = TRUE, guides = "collect") & theme(legend.position = "top")
+}
+
+mat <- clusters %>%
+    dplyr::select(tidyselect::starts_with("cluster")) %>%
+    as.matrix() %>%
+    t() %>%
+    scale()
+
+meta <- clusters %>%
+    dplyr::select(-tidyselect::starts_with("cluster")) %>%
+    tibble::column_to_rownames("barcode")
+
+colnames(mat) <- rownames(meta)
+pca <- PCAtools::pca(mat, metadata = meta)
+
+pca_grid(pca, components = 1:4)
+```
+
+# Cluster likelihood distributions
+
+## Single 
+
+If a barcode is assigned to a cluster, what is the likelihood it belongs to that cluster?
+
+```{r cluster logprob hist, echo=TRUE, fig.width=7, fig.height=3*nclust}
+clusters <- clusters %>%
+    tidyr::separate(col = "assignment", into = c("assignment1", "assignment2"), sep = "\\/", fill = "right") %>%
+    tidyr::pivot_longer(
+        cols = tidyselect::starts_with("cluster"),
+        names_to = "cluster",
+        values_to = "log_prob",
+        names_transform = function(x) str_replace(x, "cluster", "")
+    ) %>%
+    dplyr::filter(cluster == assignment1 | cluster == assignment2)
+min <- min(clusters$log_prob)
+
+ggplot(clusters, aes(x = log_prob, fill = status)) +
+    geom_histogram(bins = 100, position = "stack") +
+    xlim(c(min, 0)) +
+    facet_wrap(~cluster, nrow = length(unique(clusters$cluster))) +
+    labs(x = "Log Probability", y = "# Barcodes")
+```
+
+## Pairwise 
+
+If a barcode is assigned to a cluster, what is the likelihood it belongs to that cluster?
+
+```{r cluster logprob grid, echo=TRUE, fig.width=11, fig.height=11}
+clusters <- readr::read_tsv("clusters.tsv")
+
+logprob_grid <- function(df, clusters = 1:nclust) {
+    min <- df %>%
+        dplyr::select(tidyselect::starts_with("cluster")) %>%
+        as.vector() %>%
+        min()
+
+    # initialize values for nested loops
+    plist <- list()
+    k <- 0
+    clusters <- clusters - 1
+    for (i in clusters) {
+        for (j in clusters) {
+            k <- k + 1
+            if (i == j) {
+                n_singlets <- nrow(df[df$status == "singlet" & df$assignment == i, ])
+                label <- paste0("Cluster ", i, " Likelihood \n(", n_singlets, " singlets)")
+                plist[[k]] <- ggplot() +
+                    annotate("text", x = 0.5, y = 0.5, label = label, size = 3, fontface = 2) +
+                    theme_void()
+                next
+            }
+            if (i > j) {
+                plist[[k]] <- ggplot() +
+                    theme_void()
+                next
+            }
+
+
+            d <- df %>%
+                dplyr::filter((status == "singlet" & (grepl(i, assignment) | grepl(j, assignment))) |
+                    (status == "doublet" & (grepl(i, assignment) & grepl(j, assignment))) |
+                    (status == "unassigned" &
+                        ((grepl(i, assignment) | grepl(j, assignment)) |
+                            grepl(i, assignment) & grepl(j, assignment))))
+
+            n_doub <- nrow(d[d$status == "doublet", ])
+
+            c1 <- as.name(paste0("cluster", i))
+            c2 <- as.name(paste0("cluster", j))
+
+            plist[[k]] <- ggplot() +
+                geom_point(data = filter(d, status == "singlet"), aes_(x = c2, y = c1, color = "#00BA38"), alpha = 0.2) +
+                geom_point(data = filter(d, status == "unassigned"), aes_(x = c2, y = c1, color = "#619CFF"), alpha = 0.2) +
+                geom_point(data = filter(d, status == "doublet"), aes_(x = c2, y = c1, color = "#F8766D"), alpha = 0.2) +
+                scale_color_manual(name = "status", values = c("#00BA38" = "#00BA38", "#619CFF" = "#619CFF", "#F8766D" = "#F8766D"), labels = c("singlet", "unassigned", "doublet")) +
+                lims(x = c(min - 1, 0), y = c(min - 1, 0)) +
+                labs(caption = paste(n_doub, "doublets")) +
+                theme_classic() +
+                theme(axis.ticks = element_blank(), axis.text = element_blank())
+        }
+    }
+
+    patchwork::wrap_plots(plist, ncol = length(clusters), byrow = TRUE, guides = "collect") & theme(legend.position = "top")
+}
+
+logprob_grid(clusters, 1:nclust)
+```
+
+# Cluster-Individual Relatedness
+
+```{r load relatedness data, echo=TRUE}
+# read and clean relatedness.csv
+if (!file.exists("relatedness.csv")) {
+    print("relatedness.csv not found, exiting...")
+    knitr::knit_exit()
+}
+
+relate <- readr::read_csv("relatedness.csv", col_names = c("ind1", "ind2", "dst")) %>%
+    dplyr::filter(!(grepl("cluster", ind1) & grepl("cluster", ind2)))
+
+ggplot(relate, aes(x = ind1, y = ind2, fill = dst)) +
+    geom_tile(size = 0.5) +
+    scale_fill_gradient(low = "white", high = "red") +
+    geom_text(aes(label = round(dst, digits = 2)), size = 4) +
+    labs(title = "Identity by site (IBS) distance", x = NULL, y = NULL, fill = NULL) +
+    theme_minimal()
+```
+
