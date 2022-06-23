@@ -43,7 +43,7 @@ ggplot2::theme_set(ggplot2::theme_bw())
 
 knitr::opts_knit$set(root.dir = params$souporcell_args$out_dir)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-knitr::opts_chunk$set(cache = TRUE)
+# knitr::opts_chunk$set(cache = TRUE)
 ```
 
 ```{css set image style}
@@ -85,20 +85,24 @@ tbody {
 
 ## Clustering Results:
 
-```{r loci, echo=TRUE}
+```{r loci}
 err = read_lines("clusters.err")
 print(err[1])
 print(err[length(err)])
 ```
 
-```{r clustering summary, echo=TRUE}
+```{r clustering summary}
 # read clusters.tsv
 clusters <- readr::read_tsv("clusters.tsv")
 nclust <- clusters %>%
     dplyr::select(tidyselect::starts_with("cluster")) %>%
     ncol()
+barcodes = nrow(clusters)
+cells_loaded = 40000
+expect_doublets = round((4.597701e-06 * cells_loaded) * barcodes)
 
-print(paste0(nrow(clusters), " total cells in ", nclust, " clusters"))
+glue("From loading {cells_loaded}, we expect {expect_doublets} doublets") %>% print()
+glue("Souporcell returns {barcodes} total barcodes in {nclust} clusters") %>% print()
 table(clusters$status)
 table(clusters$assignment, clusters$status)
 ```
