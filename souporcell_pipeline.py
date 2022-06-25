@@ -493,7 +493,6 @@ def freebayes(args, bam, fasta):
         done.write(final_vcf + "\n")
     return(final_vcf)
 
-
 def vartrix(args, final_vcf, final_bam):
     print("running vartrix")
     ref_mtx = args.out_dir + "/ref.mtx"
@@ -555,6 +554,12 @@ def relatedness(args):
     subprocess.check_call(["bash", directory+"/relatedness.sh", args.out_dir, str(args.threads)])
     subprocess.check_call(['touch', args.out_dir + "/relatedness.done"])
 
+def annotate(args):
+    print("running annotation of cluster genotypes")
+    directory = os.path.dirname(os.path.realpath(__file__))
+    subprocess.check_call(["python", directory+"/annotate.py", args.out_dir])
+    subprocess.check_call(['touch', args.out_dir + "/annotate.done"])
+
 def qc_report(args):
     print("generating qc report")
     directory = os.path.dirname(os.path.realpath(__file__))
@@ -568,7 +573,7 @@ def qc_report(args):
                           common_variants='{12}',known_genotypes='{13}', known_genotypes_sample_names='{14}', aligner='{15}')))\" \
     '''.format(rmd_file, out_file, sample,
         os.path.abspath(args.bam), os.path.abspath(args.barcodes),os.path.abspath(args.fasta), args.threads, os.path.abspath(args.out_dir), args.clusters,
-        args.min_alt, args.min_ref, args.restarts, args.common_variants, args.known_genotypes, args.known_genotypes_sample_names, args.aligner)
+        args.min_alt, args.min_ref, args.restarts, args.common_variants, args.known_genotypes, ' '.join(args.known_genotypes_sample_names), args.aligner)
     subprocess.check_call(["Rscript -e " + rmd_call], shell=True)
     subprocess.check_call(['touch', args.out_dir + "/qc_report.done"])
 
@@ -620,6 +625,8 @@ if not(os.path.exists(args.out_dir + "/consensus.done")):
     consensus(args, ref_mtx, alt_mtx, doublet_file)
 if not(os.path.exists(args.out_dir + "/relatedness.done")):
     relatedness(args)
+if not(os.path.exists(args.out_dir + "/annotate.done")):
+    annotate(args)
 if not(os.path.exists(args.out_dir + "/qc_report.done")):
     qc_report(args)
 print("done")
