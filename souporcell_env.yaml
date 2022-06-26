@@ -439,7 +439,7 @@ dependencies:
     - pyfasta==0.5.2
     - pyjwt==1.7.1
     - pyparsing==2.4.2
-    - pysam==0.15.2
+    - pysam==0.19.1
     - pystan==2.19.1.1
     - python-dateutil==2.8.0
     - pyvcf==0.6.8
