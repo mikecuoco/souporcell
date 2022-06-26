@@ -17,7 +17,7 @@ def reader(f):
     for line in f:
         yield line.rstrip()
 
-def pool_barcodes(bc_files):
+def pool_barcodes(run_ids, bc_files):
     """
     Update cell barcodes, making them unique across 10x runs
     """
@@ -42,7 +42,7 @@ def pool_barcodes(bc_files):
                 
                 pool_file.writelines(new_bc + "\n") # save to file
 
-                info_out = [new_bc, old_bc, str(s + 1)]
+                info_out = [new_bc, old_bc, run_ids[s]]
                 info_file.writelines("\t".join(info_out) + "\n") # save new/old map to file
                 
     pool_file.close()
@@ -70,13 +70,13 @@ def retag_bam(barcodes, inBAM, outBAM):
             read.set_tag('CB', barcodes[read.get_tag('CB')])
         out.write(read)
 
-def main(bc_files, bam_files, outBAM):
+def main(run_ids, bc_files, bam_files, outBAM):
     """
         run the script
     """
     # 1. pool barcodes together
     print("Creating new cell barcodes...")
-    barcodes = pool_barcodes(bc_files)
+    barcodes = pool_barcodes(run_ids, bc_files)
 
     # 2. retag each bam file
     # setup pool of workers
@@ -97,8 +97,8 @@ def main(bc_files, bam_files, outBAM):
     [os.remove(file) for file in file_list]
 
     # 4. check the output bam file for integrity
-    print("Running samtools quickcheck {} ...".format(outBAM))
-    pysam.quickcheck(outBAM)
+    print("Running samtools quickcheck {}".format(outBAM))
+    pysam.quickcheck(outBAM) # NOTE: this fails on pysam < 0.19
 
     # 5. sort and index the output bam file
     print("Running samtools sort {}...".format(outBAM))
@@ -121,13 +121,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bam-files", type=str, nargs="+", help="input BAM files"
     )
+    parser.add_argument(
+        "--run-ids", type=str, nargs="+", help="run IDs for each BAM file / barcodes file combination"
+    )
     args = parser.parse_args()
 
     # error checks
+    if len(args.run_ids) != len(args.bam_files):
+        raise ValueError("Number of run IDs and BAM files must be the same.")
+    if len(args.run_ids) != len(args.barcodes_files):
+        raise ValueError("Number of run IDs and barcodes files must be the same.")
     if len(args.barcodes_files) != len(args.bam_files):
         raise ValueError("Number of barcodes files and BAM files must be the same.")
 
-    n = len(args.bam_files)
+    n = len(args.run_ids)
     
     for s in range(n):
         if not os.path.exists(args.barcodes_files[s]):
@@ -144,5 +151,5 @@ if __name__ == "__main__":
 
     # read barcodes
     print("Merging {} runs: ".format(n) + " ".join(args.bam_files))
-    main(args.barcodes_files, args.bam_files, str(args.out))
+    main(args.run_ids, args.barcodes_files, args.bam_files, str(args.out))
 
