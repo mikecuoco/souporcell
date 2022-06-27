@@ -18,11 +18,11 @@ params:
 params <- list(
     sample = "LPS1",
     souporcell_args = list(
-        bam = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/cellranger/LPS1/outs/possorted_genome_bam.bam",
-        barcodes = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/cellbender/LPS1/output_cell_barcodes.csv",
+        bam = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/cellranger/LPS1_min5/outs/possorted_genome_bam.bam",
+        barcodes = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/cellbender/LPS1_min5/output_cell_barcodes.csv",
         fasta = "/home/mcuoco/references/Homo_sapiens/refdata-cellranger-GRCh38-3.0.0/fasta/genome.fa",
         clusters = 5, threads = 32, min_alt = 5, min_ref = 5, restarts = 15,
-        out_dir = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/souporcell/LPS1",
+        out_dir = "/home/mcuoco/projects/jasmin_microglia/data/intermediate/10x/20220315/souporcell/LPS2_NT2_min5_200restarts",
         aligner = "HISAT2",
         common_variants = "/home/mcuoco/projects/jasmin_microglia/data/snps/20220314_igm/impute_1000g/07_lift_hg19_to_hg38/all_igm-imputed-hg38-ensmeblchrs.vcf",
         known_genotypes = "/home/mcuoco/projects/jasmin_microglia/data/snps/20220314_igm/impute_1000g/07_lift_hg19_to_hg38/all_igm-imputed-hg38-ensmeblchrs.vcf",
@@ -43,12 +43,13 @@ ggplot2::theme_set(ggplot2::theme_bw())
 
 knitr::opts_knit$set(root.dir = params$souporcell_args$out_dir)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-# knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(cache = FALSE, fig.path = NULL)
+# knitr::opts_chunk$set(cache = TRUE) for testing
 ```
 
 ```{css set image style}
 p {
-    overflow-x: auto; 
+    /* overflow-x: auto;  */
     white-space: nowrap;
     }
 p img {
@@ -97,12 +98,15 @@ clusters <- readr::read_tsv("clusters.tsv")
 nclust <- clusters %>%
     dplyr::select(tidyselect::starts_with("cluster")) %>%
     ncol()
-barcodes = nrow(clusters)
+nbarcodes = nrow(clusters)
+nruns = stringr::str_extract(clusters$barcode, "[0-9]+") %>% 
+    unique() %>%
+    length()
 cells_loaded = 40000
-expect_doublets = round((4.597701e-06 * cells_loaded) * barcodes)
+expect_doublets = round((4.597701e-06 * cells_loaded) * nbarcodes / nruns) * nruns
 
-glue("From loading {cells_loaded}, we expect {expect_doublets} doublets") %>% print()
-glue("Souporcell returns {barcodes} total barcodes in {nclust} clusters") %>% print()
+glue("From loading {cells_loaded} in each of {nruns} 10x runs, we expect {expect_doublets} doublets") %>% print()
+glue("Souporcell processed {nbarcodes} total barcodes inti {nclust} clusters") %>% print()
 table(clusters$status)
 table(clusters$assignment, clusters$status)
 ```
@@ -113,7 +117,7 @@ table(clusters$assignment, clusters$status)
  - **Doublets** are <span style='color: gray;'>gray</span>
  - **Unassigned** are <span style='color: black;'>black</span>
 
-```{r pca, echo=TRUE, fig.width=10, fig.height=10}
+```{r pca, echo=TRUE, fig.width=20, fig.height=20}
 pca_grid <- function(pca, components = 1:5, alpha = 0.3) {
     stopifnot(class(pca) == "pca")
 
@@ -207,7 +211,7 @@ ggplot(clusters, aes(x = log_prob, fill = status)) +
 
 If a barcode is assigned to a cluster, what is the likelihood it belongs to that cluster?
 
-```{r cluster logprob grid, echo=TRUE, fig.width=11, fig.height=11}
+```{r cluster logprob grid, echo=TRUE,  fig.width=2*nclust, fig.height=2*nclust}
 clusters <- readr::read_tsv("clusters.tsv")
 
 logprob_grid <- function(df, clusters = 1:nclust) {
@@ -222,6 +226,11 @@ logprob_grid <- function(df, clusters = 1:nclust) {
     clusters <- clusters - 1
     for (i in clusters) {
         for (j in clusters) {
+            # skip if no cells are assigned to this cluster
+            if (sum(grepl(i,df$assignment)) == 0 | sum(grepl(j,df$assignment)) == 0) {
+                next
+            }
+
             k <- k + 1
             if (i == j) {
                 n_singlets <- nrow(df[df$status == "singlet" & df$assignment == i, ])
@@ -237,7 +246,7 @@ logprob_grid <- function(df, clusters = 1:nclust) {
                 next
             }
 
-
+            # keep only barcodes that were assigned to cluster i and/or j
             d <- df %>%
                 dplyr::filter((status == "singlet" & (grepl(i, assignment) | grepl(j, assignment))) |
                     (status == "doublet" & (grepl(i, assignment) & grepl(j, assignment))) |
@@ -245,20 +254,27 @@ logprob_grid <- function(df, clusters = 1:nclust) {
                         ((grepl(i, assignment) | grepl(j, assignment)) |
                             grepl(i, assignment) & grepl(j, assignment))))
 
-            n_doub <- nrow(d[d$status == "doublet", ])
-
             c1 <- as.name(paste0("cluster", i))
             c2 <- as.name(paste0("cluster", j))
-
+            # TODO: Fix error from LPS2_NT2
             plist[[k]] <- ggplot() +
-                geom_point(data = filter(d, status == "singlet"), aes_(x = c2, y = c1, color = "#00BA38"), alpha = 0.2) +
-                geom_point(data = filter(d, status == "unassigned"), aes_(x = c2, y = c1, color = "#619CFF"), alpha = 0.2) +
-                geom_point(data = filter(d, status == "doublet"), aes_(x = c2, y = c1, color = "#F8766D"), alpha = 0.2) +
                 scale_color_manual(name = "status", values = c("#00BA38" = "#00BA38", "#619CFF" = "#619CFF", "#F8766D" = "#F8766D"), labels = c("singlet", "unassigned", "doublet")) +
                 lims(x = c(min - 1, 0), y = c(min - 1, 0)) +
-                labs(caption = paste(n_doub, "doublets")) +
+                labs(caption = paste(sum(d$status == "doublet"), "doublets")) +
                 theme_classic() +
                 theme(axis.ticks = element_blank(), axis.text = element_blank())
+
+            if (sum(d$status == "doublet") > 0) {
+                plist[[k]] = plist[[k]] + 
+                    geom_point(data = filter(d, status == "doublet"), aes_(x = c2, y = c1, color = "#F8766D"), alpha = 0.2)
+            } else if (sum(d$status == "unassigned") > 0) {
+                plist[[k]] = plist[[k]] + 
+                    geom_point(data = filter(d, status == "unassigned"), aes_(x = c2, y = c1, color = "#619CFF"), alpha = 0.2) 
+            } else if (sum(d$status == "singlet") > 0) {
+                plist[[k]] = plist[[k]] + 
+                    geom_point(data = filter(d, status == "singlet"), aes_(x = c2, y = c1, color = "#00BA38"), alpha = 0.2) 
+            }
+
         }
     }
 
