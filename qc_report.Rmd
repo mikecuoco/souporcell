@@ -43,13 +43,13 @@ ggplot2::theme_set(ggplot2::theme_bw())
 
 knitr::opts_knit$set(root.dir = params$souporcell_args$out_dir)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-knitr::opts_chunk$set(cache = FALSE, fig.path = NULL)
+knitr::opts_chunk$set(cache = FALSE)
 # knitr::opts_chunk$set(cache = TRUE) for testing
 ```
 
 ```{css set image style}
 p {
-    /* overflow-x: auto;  */
+    overflow: auto; 
     white-space: nowrap;
     }
 p img {
@@ -82,7 +82,7 @@ tbody {
 |                      `--aligner` | aligner to use (HISAT2 or minimap2)                          | ``r params$souporcell_args$aligner``                        |
 |              `--common_variants` | VCF file of known variant loci, skips variant calling        | ``r params$souporcell_args$common_variants``                |
 |              `--known_genotypes` | VCF file of known sample genotypes, initializes clustering   | ``r params$souporcell_args$known_genotypes``                |
-| `--known_genotypes_sample_names` | names of samples in above VCF file                           | **`r params$souporcell_args$known_genotypes_sample_names`** |
+| `--known_genotypes_sample_names` | names of samples in above VCF file                           | `r params$souporcell_args$known_genotypes_sample_names`     |
 
 ## Clustering Results:
 
@@ -106,7 +106,7 @@ cells_loaded = 40000
 expect_doublets = round((4.597701e-06 * cells_loaded) * nbarcodes / nruns) * nruns
 
 glue("From loading {cells_loaded} in each of {nruns} 10x runs, we expect {expect_doublets} doublets") %>% print()
-glue("Souporcell processed {nbarcodes} total barcodes inti {nclust} clusters") %>% print()
+glue("Souporcell processed {nbarcodes} total barcodes into {nclust} clusters") %>% print()
 table(clusters$status)
 table(clusters$assignment, clusters$status)
 ```
@@ -117,7 +117,7 @@ table(clusters$assignment, clusters$status)
  - **Doublets** are <span style='color: gray;'>gray</span>
  - **Unassigned** are <span style='color: black;'>black</span>
 
-```{r pca, echo=TRUE, fig.width=20, fig.height=20}
+```{r pca, echo=TRUE, fig.width=7*nruns, fig.height=7*nruns}
 pca_grid <- function(pca, components = 1:5, alpha = 0.3) {
     stopifnot(class(pca) == "pca")
 
@@ -146,17 +146,17 @@ pca_grid <- function(pca, components = 1:5, alpha = 0.3) {
                 geom_point(
                     data = filter(df, status == "doublet"),
                     aes_string(x = components[j], y = components[i]),
-                    color = "gray", alpha = alpha
+                    color = "gray", alpha = alpha, size = 1
                 ) +
                 geom_point(
                     data = filter(df, status == "unassigned"),
                     aes_string(x = components[j], y = components[i]),
-                    color = "black", alpha = alpha
+                    color = "black", alpha = alpha, size = 1
                 ) +
                 geom_point(
                     data = filter(df, status == "singlet"),
                     aes_string(x = components[j], y = components[i], color = "assignment"),
-                    alpha = alpha
+                    alpha = alpha, size = 1
                 ) +
                 labs(color = "cluster\nassignment") +
                 theme(panel.grid = element_blank())
@@ -256,7 +256,6 @@ logprob_grid <- function(df, clusters = 1:nclust) {
 
             c1 <- as.name(paste0("cluster", i))
             c2 <- as.name(paste0("cluster", j))
-            # TODO: Fix error from LPS2_NT2
             plist[[k]] <- ggplot() +
                 scale_color_manual(name = "status", values = c("#00BA38" = "#00BA38", "#619CFF" = "#619CFF", "#F8766D" = "#F8766D"), labels = c("singlet", "unassigned", "doublet")) +
                 lims(x = c(min - 1, 0), y = c(min - 1, 0)) +
@@ -264,13 +263,15 @@ logprob_grid <- function(df, clusters = 1:nclust) {
                 theme_classic() +
                 theme(axis.ticks = element_blank(), axis.text = element_blank())
 
+            if (sum(d$status == "unassigned") > 0) {
+                plist[[k]] = plist[[k]] + 
+                    geom_point(data = filter(d, status == "unassigned"), aes_(x = c2, y = c1, color = "#619CFF"), alpha = 0.2) 
+            } 
             if (sum(d$status == "doublet") > 0) {
                 plist[[k]] = plist[[k]] + 
                     geom_point(data = filter(d, status == "doublet"), aes_(x = c2, y = c1, color = "#F8766D"), alpha = 0.2)
-            } else if (sum(d$status == "unassigned") > 0) {
-                plist[[k]] = plist[[k]] + 
-                    geom_point(data = filter(d, status == "unassigned"), aes_(x = c2, y = c1, color = "#619CFF"), alpha = 0.2) 
-            } else if (sum(d$status == "singlet") > 0) {
+            } 
+            if (sum(d$status == "singlet") > 0) {
                 plist[[k]] = plist[[k]] + 
                     geom_point(data = filter(d, status == "singlet"), aes_(x = c2, y = c1, color = "#00BA38"), alpha = 0.2) 
             }
@@ -286,7 +287,7 @@ logprob_grid(clusters, 1:nclust)
 
 # Cluster-Individual Relatedness
 
-```{r load relatedness data, echo=TRUE}
+```{r load relatedness data, echo=TRUE, fig.width = 1.5*nclust}
 # read and clean relatedness.csv
 if (!file.exists("relatedness.csv")) {
     print("relatedness.csv not found, exiting...")
